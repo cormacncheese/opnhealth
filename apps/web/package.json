@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 3100",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "db:types": "supabase gen types typescript --local --workdir ../.. > lib/database.types.ts"
   },
   "dependencies": {
