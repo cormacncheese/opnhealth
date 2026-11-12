@@ -1,0 +1,40 @@
+name: Agent evals
+
+# Any change to what the agents see or decide must not lower accuracy on the
+# golden set. Scores are recorded in eval_runs and shown on /data.
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agents/**"
+      - "supabase/functions/_shared/pipeline/**"
+      - "supabase/functions/_shared/llm.ts"
+      - "supabase/functions/_shared/env.ts"
+      - "supabase/migrations/**"
+      - "evals/**"
+  # Nightly on main, so a change on the model provider's side is caught too.
+  schedule:
+    - cron: "40 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: yarn install --frozen-lockfile
+      - run: supabase start -x studio,imgproxy,vector,logflare,supavisor,edge-runtime,realtime
+      - name: Score the golden set
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL }}
+          AGENT_MODEL_FAST: ${{ vars.AGENT_MODEL_FAST }}
+          # Only scheduled and manual runs report to production.
+          EVAL_RESULTS_DATABASE_URL: ${{ github.event_name != 'pull_request' && secrets.EVAL_RESULTS_DATABASE_URL || '' }}
+        run: yarn evals

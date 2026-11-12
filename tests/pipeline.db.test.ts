@@ -2,54 +2,14 @@
 // model and an in-memory file store. Run with `yarn test:db` after
 // `supabase start`.
 
-import { PDFDocument, StandardFonts } from "pdf-lib";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Llm, LlmRequest } from "../supabase/functions/_shared/llm.ts";
 import { sha256Hex } from "../supabase/functions/_shared/pdf.ts";
-import type { Ctx, DocumentStore } from "../supabase/functions/_shared/pipeline/context.ts";
+import type { Ctx } from "../supabase/functions/_shared/pipeline/context.ts";
 import { drainQueue } from "../supabase/functions/_shared/pipeline/worker.ts";
+import { makePdf, memoryStore, type Script, scriptedLlm } from "./helpers.ts";
 
 const url = process.env.TEST_DATABASE_URL;
-
-type Script = Record<string, (req: LlmRequest<unknown>) => unknown>;
-
-function scriptedLlm(script: Script): Llm {
-  return {
-    async generate<T>(req: LlmRequest<T>) {
-      const reply = script[req.name];
-      if (!reply) throw new Error(`No scripted reply for "${req.name}"`);
-      const output = req.schema.parse(reply(req as LlmRequest<unknown>)) as T;
-      return {
-        output,
-        usage: { name: req.name, model: "test/scripted", inputTokens: 100, outputTokens: 50, costUsd: 0.001, durationMs: 1 },
-      };
-    },
-  };
-}
-
-function memoryStore(): DocumentStore & { files: Map<string, Uint8Array> } {
-  const files = new Map<string, Uint8Array>();
-  return {
-    files,
-    async download(bucket, path) {
-      const f = files.get(`${bucket}/${path}`);
-      if (!f) throw new Error(`Missing ${bucket}/${path}`);
-      return f;
-    },
-    async upload(bucket, path, bytes) {
-      files.set(`${bucket}/${path}`, bytes);
-    },
-  };
-}
-
-async function makePdf(lines: string[]): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const page = doc.addPage([612, 792]);
-  lines.forEach((line, i) => page.drawText(line, { x: 50, y: 740 - i * 18, size: 11, font }));
-  return await doc.save();
-}
 
 /** The replies of a model that reads the report correctly and finds nothing wrong. */
 function honestScript(results: { analyte: string; value: number; unit: string }[], overrides: Script = {}): Script {

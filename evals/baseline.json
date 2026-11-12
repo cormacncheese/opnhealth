@@ -1,0 +1,7 @@
+{
+  "note": "Minimum scores a change must meet. Raise these after a better run with `yarn evals --update-baseline`.",
+  "intake_accuracy": 0.85,
+  "extraction_recall": 0.85,
+  "extraction_precision": 0.85,
+  "decision_accuracy": 0.8
+}

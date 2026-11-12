@@ -204,6 +204,8 @@ export async function discoverBrandDocuments(
     for (const link of extractLinks(html, pageUrl)) {
       const isFile = /\.(pdf|png|jpe?g)(\?|$)/i.test(link.url);
       if (!isFile || !isSafePublicUrl(link.url) || knownUrls.has(link.url)) continue;
+      // robots.txt applies to the files we would download, not only to the pages we read.
+      if (sameSite(link.url, website) && !allowedByRobots(link.url, disallowed)) continue;
       if (!LINK_HINT.test(link.url) && !LINK_HINT.test(link.text)) continue;
       found.set(link.url, link);
     }

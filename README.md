@@ -10,7 +10,9 @@ decision and correction is written to a public, hash-chained ledger.
 | `apps/ios` | SwiftUI iOS app (`xcodegen generate` in `apps/ios`) |
 | `supabase/migrations` | Schema, ledger, queues, cron, row level security |
 | `supabase/functions` | Edge Functions: agent worker, source sync, COA upload, data export |
-| `tests` | Unit tests and database pipeline tests |
+| `apps/worker` | Cloudflare Worker that can run the agent pipeline |
+| `evals` | Golden set of lab reports and the scoring runner that gates agent changes |
+| `tests` | Unit tests and database tests |
 
 ## Local development
 
@@ -24,7 +26,6 @@ yarn dev                             # http://localhost:3100
 yarn test && yarn test:db
 ```
 
-Code is Apache-2.0. Published data is ODbL-1.0.
 
 ## Agent runtime on Cloudflare
 
@@ -41,3 +42,42 @@ npx wrangler deploy
 ```
 
 Then add the Vault secret `agent_worker_url` = `https://<worker host>/dispatch`.
+
+## Hosted setup
+
+1. Link and migrate: `supabase link --project-ref <ref>` then `supabase db push`.
+2. Function secrets: `supabase secrets set WORKER_SECRET=<random> AI_GATEWAY_API_KEY=<key>` (optionally `FDC_API_KEY`, `AGENT_MODEL`, `AGENT_MODEL_FAST`).
+3. Deploy functions: `supabase functions deploy`.
+4. Vault secrets, which switch on the cron jobs (run in the SQL editor):
+   ```sql
+   select vault.create_secret('https://<ref>.supabase.co', 'project_url');
+   select vault.create_secret('<the same WORKER_SECRET>', 'worker_secret');
+   ```
+5. Add maintainers: `insert into public.maintainers (user_id) values ('<auth user id>');`
+6. Website on Vercel: root directory `apps/web`, framework Next.js, with
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+
+## Evals
+
+`yarn evals` runs the golden set in `evals/cases.ts` through the real agents
+against the local stack and compares the scores with `evals/baseline.json`.
+CI runs it on any pull request that touches the agents, and nightly on `main`.
+Nightly results are written to the hosted `eval_runs` table
+(`EVAL_RESULTS_DATABASE_URL` secret); a failing run makes the Supervisor pause
+publishing until a passing run is recorded. GitHub secrets needed:
+`AI_GATEWAY_API_KEY` and, for nightly runs, `EVAL_RESULTS_DATABASE_URL`.
+
+The cases are synthetic. Add real, hand-labelled reports to measure reading
+accuracy on messy scans.
+
+## Checking the ledger
+
+Every row in `events` stores `prev_hash` and `hash`, where `hash` is the
+SHA-256 of the previous hash and the entry's fields joined by `|` (see
+`private.event_hash` in `supabase/migrations`). Anyone can call
+`rpc/verify_ledger?from_seq=1&to_seq=N`, or recompute the chain from the
+nightly export, whose manifest records the ledger head.
+
+## Licences
+
+Code: Apache-2.0 (`LICENSE`). Data: ODbL-1.0 (`DATA_LICENSE.md`).

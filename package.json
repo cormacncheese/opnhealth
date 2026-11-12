@@ -1,6 +1,7 @@
 {
   "name": "opnhealth",
   "private": true,
+  "type": "module",
   "workspaces": [
     "apps/web",
     "apps/worker"
@@ -11,7 +12,8 @@
     "lint": "yarn workspace @opnhealth/web lint",
     "typecheck": "yarn workspace @opnhealth/web typecheck && tsc -p supabase/functions/tsconfig.json",
     "test": "vitest run tests/core.test.ts",
-    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:55322/postgres} vitest run tests/pipeline.db.test.ts"
+    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:55322/postgres} vitest run tests/pipeline.db.test.ts tests/ops.db.test.ts",
+    "evals": "tsx evals/run.ts"
   },
   "dependencies": {
     "ai": "^7.0.170",

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web-and-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: yarn install --frozen-lockfile
+      - run: yarn lint
+      - run: yarn typecheck
+      - run: yarn test
+
+      - name: Start a local Supabase stack
+        run: supabase start -x studio,imgproxy,vector,logflare,supavisor,edge-runtime
+      - run: yarn test:db
+
+      - name: Build the website against the local stack
+        run: |
+          eval "$(supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=')"
+          NEXT_PUBLIC_SUPABASE_URL="$API_URL" NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$PUBLISHABLE_KEY" yarn build
+
+      - name: Bundle the Cloudflare agent worker
+        run: yarn workspace @opnhealth/worker wrangler deploy --dry-run --outdir dist
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Build for the simulator
+        working-directory: apps/ios
+        run: |
+          xcodegen generate
+          xcodebuild -project OpnHealth.xcodeproj -scheme OpnHealth \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
