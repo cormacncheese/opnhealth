@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "opnhealth-agents",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-12",
+  // process.env is populated from bindings, which the shared pipeline code reads.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  "limits": { "cpu_ms": 300000 },
+  "queues": {
+    "producers": [{ "binding": "AGENT_JOBS", "queue": "opnhealth-agent-jobs" }],
+    "consumers": [
+      {
+        "queue": "opnhealth-agent-jobs",
+        "max_batch_size": 1,
+        "max_retries": 2,
+        "dead_letter_queue": "opnhealth-agent-jobs-dlq"
+      }
+    ]
+  }
+  // Secrets (wrangler secret put): WORKER_SECRET, SUPABASE_DB_URL, SUPABASE_URL,
+  // SUPABASE_SERVICE_ROLE_KEY, AI_GATEWAY_API_KEY, optionally AGENT_MODEL, AGENT_MODEL_FAST.
+}

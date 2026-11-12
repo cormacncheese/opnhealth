@@ -2,7 +2,8 @@
   "name": "opnhealth",
   "private": true,
   "workspaces": [
-    "apps/web"
+    "apps/web",
+    "apps/worker"
   ],
   "scripts": {
     "dev": "yarn workspace @opnhealth/web dev",
@@ -24,7 +25,8 @@
     "typescript": "^5",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "@cloudflare/workers-types": "^4"
   },
   "packageManager": "yarn@1.22.22"
 }

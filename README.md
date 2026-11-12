@@ -25,3 +25,19 @@ yarn test && yarn test:db
 ```
 
 Code is Apache-2.0. Published data is ODbL-1.0.
+
+## Agent runtime on Cloudflare
+
+`apps/worker` runs the agent pipeline on Cloudflare Workers and Queues. pgmq
+in Postgres stays the job store; pg_cron posts to the Worker's `/dispatch`
+when work is waiting. To switch from the Edge Function:
+
+```sh
+cd apps/worker
+npx wrangler queues create opnhealth-agent-jobs
+npx wrangler queues create opnhealth-agent-jobs-dlq
+for s in WORKER_SECRET SUPABASE_DB_URL SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY AI_GATEWAY_API_KEY; do npx wrangler secret put $s; done
+npx wrangler deploy
+```
+
+Then add the Vault secret `agent_worker_url` = `https://<worker host>/dispatch`.
