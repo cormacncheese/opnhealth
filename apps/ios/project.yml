@@ -1,0 +1,28 @@
+name: OpnHealth
+options:
+  bundleIdPrefix: com.opnhealth
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+targets:
+  OpnHealth:
+    type: application
+    platform: iOS
+    sources: [OpnHealth]
+    dependencies:
+      - package: Supabase
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.opnhealth.app
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OpnHealth
+        INFOPLIST_KEY_SupabaseURL: $(SUPABASE_URL)
+        INFOPLIST_KEY_SupabaseKey: $(SUPABASE_PUBLISHABLE_KEY)

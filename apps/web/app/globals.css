@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: #ffffff;
+  color: #171717;
+}
+
+/* One status line at a time: the new line fades up into place. */
+@keyframes status-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-line {
+  animation: status-in 320ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-line {
+    animation: none;
+  }
+}

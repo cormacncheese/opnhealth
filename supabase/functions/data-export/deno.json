@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "ai": "npm:ai@^7.0.170",
+    "zod": "npm:zod@^4.6.7",
+    "postgres": "npm:postgres@3.4.9",
+    "pdf-lib": "npm:pdf-lib@^1.17.1",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2"
+  }
+}

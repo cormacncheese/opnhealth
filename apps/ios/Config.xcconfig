@@ -1,0 +1,7 @@
+// Public values only: the app uses the publishable key, like the website.
+// Defaults point at the local stack (`supabase start`). Put hosted values in
+// Secrets.xcconfig, which is git-ignored.
+SLASH = /
+SUPABASE_URL = http:$(SLASH)/127.0.0.1:55321
+SUPABASE_PUBLISHABLE_KEY =
+#include? "Secrets.xcconfig"

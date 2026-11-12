@@ -1,0 +1,30 @@
+{
+  "name": "opnhealth",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "yarn workspace @opnhealth/web dev",
+    "build": "yarn workspace @opnhealth/web build",
+    "lint": "yarn workspace @opnhealth/web lint",
+    "typecheck": "yarn workspace @opnhealth/web typecheck && tsc -p supabase/functions/tsconfig.json",
+    "test": "vitest run tests/core.test.ts",
+    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:55322/postgres} vitest run tests/pipeline.db.test.ts"
+  },
+  "dependencies": {
+    "ai": "^7.0.170",
+    "zod": "^4.6.7",
+    "postgres": "3.4.9",
+    "pdf-lib": "^1.17.1",
+    "@supabase/supabase-js": "^2.119.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "tsx": "^4.23.15"
+  },
+  "packageManager": "yarn@1.22.22"
+}
