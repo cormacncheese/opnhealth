@@ -1,76 +1,97 @@
-import { FileUp, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ActivityFeed } from "@/components/activity-feed";
+import { ProductCard, type ProductCardData } from "@/components/product-card";
 import { ProductSearch } from "@/components/product-search";
-import { Section } from "@/components/ui";
-import { formatNumber } from "@/lib/format";
+import { Empty } from "@/components/ui";
 import { publicClient } from "@/lib/supabase/public";
+
+const SHOWN = 30;
 
 export default function Home() {
   return (
     <>
-      <div className="rounded-[28px] bg-neutral-100 px-6 pb-8 pt-12 sm:px-10">
-        <h1 className="max-w-xl text-4xl font-semibold tracking-tight">An open record of what is in the products you buy.</h1>
-        <p className="mt-4 max-w-xl text-neutral-600">
-          Lab reports and public data on consumer products, reviewed by AI agents. Every source, every agent
-          decision and every correction is public.
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-tight">What is in the products you buy</h1>
+        <p className="mt-2 text-neutral-600">
+          Lab reports and public data, reviewed by AI agents, with every decision on the public record.
         </p>
-        <div className="mt-8">
+        <div className="mt-6">
           <ProductSearch floating />
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <Link
-          href="/submit"
-          className="flex h-24 flex-col items-center justify-center gap-2.5 rounded-[22px] bg-neutral-100 text-base font-semibold"
-        >
-          <FileUp size={22} aria-hidden />
-          Submit a report
-        </Link>
-        <Link
-          href="/records"
-          className="flex h-24 flex-col items-center justify-center gap-2.5 rounded-[22px] bg-neutral-100 text-base font-semibold"
-        >
-          <ScrollText size={22} aria-hidden />
-          Browse the ledger
+      <div className="mb-4 flex items-baseline justify-between gap-4">
+        <h2 className="text-lg font-semibold">New and updated</h2>
+        <Link href="/records" className="text-sm text-neutral-600 hover:underline">
+          Live activity
         </Link>
       </div>
-
-      <Suspense fallback={<div className="mt-8 h-16" />}>
-        <Totals />
+      <Suspense fallback={<GridSkeleton />}>
+        <LatestProducts />
       </Suspense>
-
-      <Section title="Latest activity" aside="Updates live">
-        <ActivityFeed />
-      </Section>
     </>
   );
 }
 
-async function Totals() {
-  const supabase = publicClient();
-  const [products, reports, ledger] = await Promise.all([
-    supabase.from("products").select("id", { count: "estimated", head: true }),
-    supabase.from("submissions").select("id", { count: "exact", head: true }).eq("status", "published"),
-    supabase.from("events").select("seq").order("seq", { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  if (products.error || reports.error || ledger.error) return null;
-
-  const totals = [
-    { label: "Products tracked", value: products.count ?? 0 },
-    { label: "Lab reports published", value: reports.count ?? 0 },
-    { label: "Ledger entries", value: ledger.data?.seq ?? 0 },
-  ];
+function GridSkeleton() {
   return (
-    <dl className="mt-8 grid grid-cols-3 gap-4">
-      {totals.map((t) => (
-        <div key={t.label}>
-          <dd className="text-2xl font-semibold tracking-tight">{formatNumber(t.value)}</dd>
-          <dt className="text-sm text-neutral-600">{t.label}</dt>
+    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3" aria-busy="true" aria-label="Loading products">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i}>
+          <div className="aspect-square animate-pulse rounded-[22px] bg-neutral-100" />
+          <div className="mt-3 h-4 w-2/3 animate-pulse rounded bg-neutral-100" />
         </div>
       ))}
-    </dl>
+    </div>
+  );
+}
+
+async function LatestProducts() {
+  const supabase = publicClient();
+  const columns = "id, name, brand_name, category, categories, image_url, created_at, updated_at";
+  // Products with a photo first; many catalog sources have none.
+  const [withImages, latest] = await Promise.all([
+    supabase.from("products").select(columns).not("image_url", "is", null).order("updated_at", { ascending: false }).limit(SHOWN),
+    supabase.from("products").select(columns).order("updated_at", { ascending: false }).limit(SHOWN),
+  ]);
+  const error = withImages.error ?? latest.error;
+  if (error) throw new Error(`Could not load products: ${error.message}`);
+  const seen = new Set<string>();
+  const products = [...(withImages.data ?? []), ...(latest.data ?? [])]
+    .filter((p) => !seen.has(p.id) && seen.add(p.id))
+    .slice(0, SHOWN);
+  if (!products?.length) return <Empty>No products have been added yet. The first sync runs within ten minutes.</Empty>;
+
+  const ids = products.map((p) => p.id);
+  const [reports, recalls] = await Promise.all([
+    supabase.from("published_measurements").select("product_id, submission_id").in("product_id", ids),
+    supabase.from("recall_products").select("product_id").in("product_id", ids),
+  ]);
+
+  const reportsByProduct = new Map<string, Set<string>>();
+  for (const r of reports.data ?? []) {
+    if (!r.product_id || !r.submission_id) continue;
+    reportsByProduct.set(r.product_id, (reportsByProduct.get(r.product_id) ?? new Set()).add(r.submission_id));
+  }
+  const recalled = new Set((recalls.data ?? []).map((r) => r.product_id));
+
+  const cards: ProductCardData[] = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    brandName: p.brand_name,
+    category: p.category ?? p.categories?.[0] ?? null,
+    imageUrl: p.image_url,
+    reports: reportsByProduct.get(p.id)?.size ?? 0,
+    recalled: recalled.has(p.id),
+    // Created and last changed within the same minute.
+    isNew: Math.abs(new Date(p.updated_at).getTime() - new Date(p.created_at).getTime()) < 60_000,
+  }));
+
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
+      {cards.map((card, i) => (
+        <ProductCard key={card.id} product={card} eager={i < 6} />
+      ))}
+    </div>
   );
 }
