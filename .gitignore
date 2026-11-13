@@ -13,3 +13,4 @@ apps/ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 apps/ios/build/
 apps/ios/Secrets.xcconfig
 DerivedData/
+.vercel
