@@ -129,6 +129,8 @@ async function main() {
   await sql`select cron.alter_job(jobid, active := false) from cron.job where jobname = 'dispatch-workers'`;
   try {
     for (const q of [...STAGES, "dead_letter"]) await sql`select pgmq.purge_queue(${q})`;
+    // Earlier local test runs can leave the Supervisor's pause on; evals need the pipeline running.
+    await sql`update public.pipeline_controls set paused = false, paused_reason = null, paused_at = null where pipeline = 'coa'`;
     const ids = new Map<string, string>();
     for (const c of CASES) ids.set(c.id, await submit(c));
 
