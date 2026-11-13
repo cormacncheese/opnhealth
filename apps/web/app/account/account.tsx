@@ -71,7 +71,12 @@ function AccountInner({ userId, email }: { userId: string; email: string }) {
         <>
           {data.isMaintainer && (
             <Section title="Maintainer">
-              <ButtonLink href="/maintain">Open the review queue</ButtonLink>
+              <div className="flex flex-wrap gap-3">
+                <ButtonLink href="/maintain">Open the review queue</ButtonLink>
+                <ButtonLink href="/admin" className="bg-neutral-100 text-neutral-950">
+                  Admin
+                </ButtonLink>
+              </div>
             </Section>
           )}
 

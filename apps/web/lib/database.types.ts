@@ -1676,6 +1676,11 @@ export type Database = {
       }
     }
     Functions: {
+      admin_overview: { Args: never; Returns: Json }
+      admin_set_pipeline: {
+        Args: { p_paused: boolean; p_pipeline: string; p_reason?: string }
+        Returns: undefined
+      }
       search_products: {
         Args: { max_results?: number; q: string }
         Returns: {
