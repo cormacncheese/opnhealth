@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { RequireUser } from "@/components/require-user";
-import { Badge, Empty, Loading, Panel, QuietButton, Section } from "@/components/ui";
-import { formatDateTime, formatNumber, STATUS } from "@/lib/format";
+import { Badge, Empty, Loading, Panel, QuietButton, Section, statusTone } from "@/components/ui";
+import { formatDateTime, formatNumber, OUTCOME, reasonLabel, RELATIONSHIP, STAGE, STATUS } from "@/lib/format";
 import { browserClient } from "@/lib/supabase/browser";
 
 const REFRESH_MS = 5000;
@@ -332,6 +333,179 @@ function PipelineToggle({ pipeline, paused, onDone }: { pipeline: string; paused
   );
 }
 
+// What a submission is waiting on, from the last thing recorded about it.
+const NEXT_STEP: Record<string, string> = {
+  "submission.received": "Waiting for intake",
+  "submission.processing": "Extraction reading results",
+  "submission.extracted": "Resolver matching the product",
+  "submission.resolved": "Verifier checking the document",
+  "submission.verified": "Adjudicator deciding",
+  "submission.approved": "Redactor removing personal details",
+  "dispute.reopened": "Re-checking after a dispute",
+  "submission.reverification_scheduled": "Re-checking",
+};
+
+const FILTERS = [
+  ["all", "All"],
+  ["active", "In review"],
+  ["escalated", "With a maintainer"],
+  ["published", "Published"],
+  ["rejected", "Not published"],
+] as const;
+
+async function loadReviews(filter: string) {
+  let query = browserClient()
+    .from("submissions")
+    .select(
+      "id, status, relationship, created_at, updated_at, products!submissions_product_id_fkey(name, brand_name), claimed:products!submissions_claimed_product_id_fkey(name, brand_name), labs(name), review_decisions(stage, outcome, reason_codes, created_at)",
+    )
+    .order("updated_at", { ascending: false })
+    .limit(60);
+  if (filter === "active") query = query.in("status", ["received", "processing", "approved"]);
+  else if (filter === "rejected") query = query.in("status", ["rejected", "withdrawn", "failed", "duplicate"]);
+  else if (filter !== "all") query = query.eq("status", filter as "published" | "escalated");
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const ids = (data ?? []).map((s) => s.id);
+  const events = ids.length
+    ? await browserClient()
+        .from("events")
+        .select("subject_id, event_type, seq")
+        .eq("subject_type", "submission")
+        .in("subject_id", ids)
+        .order("seq", { ascending: false })
+    : { data: [], error: null };
+  if (events.error) throw events.error;
+  const lastEvent = new Map<string, string>();
+  for (const e of events.data ?? []) if (!lastEvent.has(e.subject_id)) lastEvent.set(e.subject_id, e.event_type);
+
+  return (data ?? []).map((s) => ({ ...s, lastEvent: lastEvent.get(s.id) ?? null }));
+}
+
+function Reviews() {
+  const [filter, setFilter] = useState<string>("all");
+  const [loaded, setLoaded] = useState<{ filter: string; rows: Awaited<ReturnType<typeof loadReviews>> } | null>(null);
+  const rows = loaded?.filter === filter ? loaded.rows : null;
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = () =>
+      loadReviews(filter).then(
+        (r) => {
+          if (cancelled) return;
+          setLoaded({ filter, rows: r });
+          setFailed(false);
+        },
+        () => !cancelled && setFailed(true),
+      );
+    run();
+    const timer = setInterval(run, REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [filter]);
+
+  return (
+    <>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {FILTERS.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={filter === value}
+            onClick={() => setFilter(value)}
+            className={`rounded-full px-4 py-2 text-sm font-medium ${filter === value ? "bg-neutral-950 text-white" : "bg-neutral-100"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {failed && !rows && <Empty>Lab reviews could not be loaded. Retrying.</Empty>}
+      {!rows && !failed && <Loading lines={4} />}
+      {rows && rows.length === 0 && <Empty>No lab reports match this filter yet.</Empty>}
+
+      {rows && rows.length > 0 && (
+        <ul className="space-y-3">
+          {rows.map((s) => {
+            const decisions = [...s.review_decisions].sort((a, b) => a.created_at.localeCompare(b.created_at));
+            const last = decisions.at(-1);
+            const product = s.products ?? s.claimed;
+            const inFlight = ["received", "processing", "approved"].includes(s.status);
+            return (
+              <li key={s.id}>
+                <Link href={`/submissions/${s.id}`} className="block rounded-[22px] bg-neutral-100 p-5 hover:bg-neutral-200/70">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-neutral-600">{product?.brand_name ?? "Brand not identified"}</p>
+                      <p className="font-semibold">{product?.name ?? "Product not identified"}</p>
+                    </div>
+                    <Badge tone={statusTone(s.status)}>{STATUS[s.status]?.label ?? s.status}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    From {RELATIONSHIP[s.relationship] ?? s.relationship}
+                    {s.labs?.name && ` · ${s.labs.name}`} · submitted {formatDateTime(s.created_at)}
+                  </p>
+                  {inFlight && (
+                    <p className="mt-2 text-sm font-medium">{(s.lastEvent && NEXT_STEP[s.lastEvent]) ?? "In review"}</p>
+                  )}
+                  {last && (
+                    <div className="mt-3">
+                      <p className="text-sm">
+                        <span className="font-medium">{OUTCOME[last.outcome] ?? last.outcome}</span>
+                        <span className="text-neutral-600"> · {STAGE[last.stage] ?? last.stage}</span>
+                      </p>
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                        {last.reason_codes.map((code) => (
+                          <li key={code}>
+                            <Badge>{reasonLabel(code)}</Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
+const TABS = [
+  ["overview", "Overview"],
+  ["reviews", "Lab reviews"],
+] as const;
+
+function Tabs() {
+  const router = useRouter();
+  const tab = useSearchParams().get("tab") === "reviews" ? "reviews" : "overview";
+  return (
+    <>
+      <div role="tablist" className="mb-6 inline-flex rounded-full bg-neutral-100 p-1">
+        {TABS.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            onClick={() => router.replace(value === "overview" ? "/admin" : `/admin?tab=${value}`, { scroll: false })}
+            className={`rounded-full px-5 py-2 text-sm font-semibold ${tab === value ? "bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08)]" : "text-neutral-600"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "reviews" ? <Reviews /> : <Inner />}
+    </>
+  );
+}
+
 export function Dashboard() {
-  return <RequireUser reason="Sign in with a maintainer account to see the admin view.">{() => <Inner />}</RequireUser>;
+  return <RequireUser reason="Sign in with a maintainer account to see the admin view.">{() => <Tabs />}</RequireUser>;
 }
