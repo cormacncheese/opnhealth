@@ -8,7 +8,9 @@ type Globals = {
 
 export function env(name: string): string | undefined {
   const g = globalThis as Globals;
-  return g.Deno?.env.get(name) ?? g.process?.env[name] ?? undefined;
+  const value = g.Deno?.env.get(name) ?? g.process?.env[name];
+  // CI and dashboards often set unused variables to "", which means "not set".
+  return value?.trim() ? value : undefined;
 }
 
 export function requireEnv(name: string): string {
