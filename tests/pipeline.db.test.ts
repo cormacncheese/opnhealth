@@ -31,7 +31,7 @@ function honestScript(results: { analyte: string; value: number; unit: string }[
         brand: "Acme",
         product_name: "Organic Cocoa Powder",
         lot_number: "L2409",
-        gtin: null,
+        gtin: "",
         matrix: "cocoa powder",
       },
       methods: ["ICP-MS"],
@@ -42,7 +42,7 @@ function honestScript(results: { analyte: string; value: number; unit: string }[
       })),
       personal_data_terms: ["Jane Analyst"],
       confidence: 0.95,
-      notes: null,
+      notes: "",
     }),
     resolve: (req) => {
       const ids = [...req.prompt.matchAll(/"id": "([0-9a-f-]{36})"/g)].map((m) => m[1]);
@@ -105,6 +105,8 @@ describe.skipIf(!url)("COA pipeline against the database", () => {
   }
 
   async function run(script: Script, stages = STAGES) {
+    // An overturned publish in an earlier test makes the Supervisor pause the pipeline.
+    await sql`update public.pipeline_controls set paused = false, paused_reason = null where pipeline = 'coa'`;
     for (const queue of stages) await drainQueue(ctx(script), queue, 10);
   }
 

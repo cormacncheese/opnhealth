@@ -1,7 +1,7 @@
 {
-  "note": "Minimum scores a change must meet. Raise these after a better run with `yarn evals --update-baseline`.",
+  "note": "Minimum scores a change must meet. Set just below the first full run (all 1.0 with anthropic/claude-sonnet-5.5) so one slip on a 7-case set passes and a real regression does not. Raise after adding cases with `yarn evals --update-baseline`.",
   "intake_accuracy": 0.85,
-  "extraction_recall": 0.85,
-  "extraction_precision": 0.85,
-  "decision_accuracy": 0.8
+  "extraction_recall": 0.9,
+  "extraction_precision": 0.9,
+  "decision_accuracy": 0.85
 }

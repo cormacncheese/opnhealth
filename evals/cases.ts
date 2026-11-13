@@ -22,6 +22,8 @@ export interface EvalCase {
     results: ExpectedResult[];
     /** Final submission status. More than one entry means any is acceptable. */
     status: ("published" | "rejected" | "escalated")[];
+    /** The report must not be attached to the product the submitter claimed. */
+    notOnClaimedProduct?: boolean;
   };
 }
 
@@ -153,8 +155,10 @@ export const CASES: EvalCase[] = [
     expect: {
       accepted: true,
       results: [{ analyte: "aflatoxins-total", operator: "eq", value: 1.8, unit: "ug/kg" }],
-      // The sample is a different brand and product from the one claimed.
-      status: ["escalated", "rejected"],
+      // The sample is a different brand and product from the one claimed. Holding it back, or
+      // publishing it under the product actually tested, are both right; the claimed product is not.
+      status: ["escalated", "rejected", "published"],
+      notOnClaimedProduct: true,
     },
   },
 ];

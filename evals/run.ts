@@ -44,14 +44,21 @@ function sameUnit(a: string | null, b: string | null): boolean {
 }
 
 async function submit(c: EvalCase): Promise<string> {
-  const bytes = await makePdf([...c.lines, `eval ${run} ${c.id}`]);
+  // A distinct report number per case and run, so reports never look reused.
+  const reportNumber = `R-${run.toUpperCase()}-${CASES.indexOf(c) + 1}`;
+  const bytes = await makePdf(c.lines.map((l) => l.replace("R-2026-10871", reportNumber)));
   const sha = await sha256Hex(bytes);
   store.files.set(`coa-originals/${sha}.pdf`, bytes);
   return await sql.begin(async (tx) => {
+    // One catalog product per case across runs, named exactly as on the report.
+    const [existing] = await tx`
+      select id from public.products where name = ${c.product.name} and brand_name = ${c.product.brand} limit 1`;
     const [openSource] = await tx`select id from public.sources where slug = 'openfoodfacts'`;
-    const [p] = await tx`
-      select private.create_product(${openSource.id}, ${c.product.name}, ${`${c.product.brand} ${run}`},
-                                    null, ${c.product.categories}) as id`;
+    const [p] = existing
+      ? [existing]
+      : await tx`
+          select private.create_product(${openSource.id}, ${c.product.name}, ${c.product.brand},
+                                        null, ${c.product.categories}) as id`;
     const slug = c.relationship === "brand" ? "brand-submission" : "consumer-submission";
     const [source] = await tx`select id from public.sources where slug = ${slug}`;
     const [doc] = await tx`
@@ -85,6 +92,9 @@ interface CaseScore {
 
 async function score(c: EvalCase, id: string): Promise<CaseScore> {
   const finalStatus = await status(id);
+  const [{ on_claimed }] = await sql`
+    select product_id is not null and product_id = claimed_product_id as on_claimed
+    from public.submissions where id = ${id}`;
   const [intake] = await sql`
     select (io.output ->> 'reports_product_test_results')::boolean as accepted
     from public.agent_runs r join public.agent_run_io io on io.run_id = r.id
@@ -119,7 +129,8 @@ async function score(c: EvalCase, id: string): Promise<CaseScore> {
     expectedRows: c.expect.results.length,
     extractedRows: rows.length,
     status: finalStatus,
-    decisionCorrect: (c.expect.status as string[]).includes(finalStatus),
+    decisionCorrect:
+      (c.expect.status as string[]).includes(finalStatus) && !(c.expect.notOnClaimedProduct && on_claimed),
     costUsd: cost,
   };
 }

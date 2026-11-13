@@ -5,11 +5,13 @@ import { z } from "zod";
 import { type Llm, type LlmFile, UNTRUSTED_INPUT_RULES } from "../llm.ts";
 import type { AgentResult } from "./types.ts";
 
-export const EXTRACTION_PROMPT_VERSION = "extraction@1";
+export const EXTRACTION_PROMPT_VERSION = "extraction@2";
 
-const nullableText = z.string().nullable();
+// Providers cap how many nullable fields a structured output may have, so the
+// model returns "" for text that is not printed and toOutput() turns it into null.
+const nullableText = z.string().describe("Empty string if not printed.");
 
-export const ExtractionSchema = z.object({
+const ModelSchema = z.object({
   lab: z.object({
     name: nullableText.describe("Testing laboratory, as printed."),
     accreditation_body: nullableText.describe(
@@ -55,7 +57,40 @@ export const ExtractionSchema = z.object({
   confidence: z.number().describe("0 to 1: how sure you are that every result was read correctly."),
   notes: nullableText.describe("Anything that made extraction unreliable. No personal data."),
 });
-export type ExtractionOutput = z.infer<typeof ExtractionSchema>;
+type ModelOutput = z.infer<typeof ModelSchema>;
+type Nulled<T> = { [K in keyof T]: T[K] extends string ? string | null : T[K] };
+
+type TopText = "report_number" | "report_date" | "sample_received_date" | "tested_date" | "notes";
+
+export type ExtractionOutput = Omit<ModelOutput, "lab" | "sample" | "results" | TopText> &
+  Nulled<Pick<ModelOutput, TopText>> & {
+    lab: Nulled<ModelOutput["lab"]>;
+    sample: Nulled<ModelOutput["sample"]>;
+    results: (Omit<ModelOutput["results"][number], "unit" | "method"> & { unit: string | null; method: string | null })[];
+  };
+
+const orNull = (v: string | null | undefined) => (v && v.trim() ? v : null);
+
+function toOutput(m: ModelOutput): ExtractionOutput {
+  return {
+    ...m,
+    lab: { name: orNull(m.lab.name), accreditation_body: orNull(m.lab.accreditation_body), accreditation_number: orNull(m.lab.accreditation_number) },
+    report_number: orNull(m.report_number),
+    report_date: orNull(m.report_date),
+    sample_received_date: orNull(m.sample_received_date),
+    tested_date: orNull(m.tested_date),
+    sample: {
+      description: orNull(m.sample.description),
+      brand: orNull(m.sample.brand),
+      product_name: orNull(m.sample.product_name),
+      lot_number: orNull(m.sample.lot_number),
+      gtin: orNull(m.sample.gtin),
+      matrix: orNull(m.sample.matrix),
+    },
+    results: m.results.map((r) => ({ ...r, unit: orNull(r.unit), method: orNull(r.method) })),
+    notes: orNull(m.notes),
+  };
+}
 
 const SYSTEM = `
 You extract data from laboratory test reports for a public database. Accuracy matters more than completeness: a wrong number published under a brand's name does real harm.
@@ -80,8 +115,8 @@ export async function extractReport(
     system: SYSTEM,
     prompt: "Extract the attached laboratory report.",
     files: [file],
-    schema: ExtractionSchema,
+    schema: ModelSchema,
     maxOutputTokens: 16000,
   });
-  return { output, usage: [usage], steps: [] };
+  return { output: toOutput(output), usage: [usage], steps: [] };
 }
