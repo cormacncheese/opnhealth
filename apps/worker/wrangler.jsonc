@@ -6,7 +6,8 @@
   // process.env is populated from bindings, which the shared pipeline code reads.
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true, "traces": { "enabled": true } },
-  "limits": { "cpu_ms": 300000 },
+  // On Workers Paid, add  "limits": { "cpu_ms": 300000 }  so PDF handling has headroom.
+  // The Free plan allows 10 ms of CPU per run, which large documents can exceed.
   "queues": {
     "producers": [{ "binding": "AGENT_JOBS", "queue": "opnhealth-agent-jobs" }],
     "consumers": [
